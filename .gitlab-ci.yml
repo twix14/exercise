@@ -1,0 +1,42 @@
+variables: 
+  MAJOR: 0
+  MINOR: 18
+  PATCH: 1
+
+stages:
+  - build
+  - test 
+  - deploy
+  # there should be a stage for staging and one for production, deploying
+
+# docker runners should be used to run these jobs, so a tag should be provided if necessary
+
+build:
+  # a internal repository should be used here, but for the purpose of this exercise I'll use dockerhub
+  image: docker:20.10.17
+  stage: build
+  # before_script with docker login, with gitlab CI_JOB_TOKEN OR CI_REGISTRY_PASSWORD as password and the configured user 
+  # https://docs.gitlab.com/ee/user/packages/container_registry/#authenticate-by-using-gitlab-cicd
+  script:
+    - docker build -t repo/litecoin:${MAJOR}.${MINOR}.${PATCH} . 
+    # docker push repo/litecoin:0.18.1, in order to push to internal repo
+
+scan: 
+  image: docker:20.10.17
+  stage: test
+  script:
+    # using docker scan as image security test, this scan implies a login
+    # I have no experience on image vulnerability scanners, so I just decided to included the one provided by docker
+    # I've used sonarqube as a client, but the usage was just a basic vulnerability scan
+    - docker scan repo/litecoin:${MAJOR}.${MINOR}.${PATCH}
+
+deploy:
+  image: bitnami/kubectl:1.24.2
+  stage: deploy
+  before_script:
+    # read kubeconfig from env var https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/#set-the-kubeconfig-environment-variable
+    # kube config should be placed in group vars from a terraform apply, for example
+    - echo $KUBE_CONFIG | base64 -d  > $KUBECONFIG
+  script: 
+    - kubectl apply -f statefulset.yml
+    - kubectl get pod litecoin-0 && kubectl get pod litecoin-1

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: litecoin
+  namespace: default
+  labels: 
+    app: litecoin
+spec:
+  selector:
+    matchLabels:
+      app: litecoin
+  serviceName: litecoin
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: litecoin
+    spec:
+      # for auth with image registry/repository
+      # imagePullSecrets:
+      # - name: image-repo
+      terminationGracePeriodSeconds: 10
+      # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/ users litecoin and group litecoin
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+      # for HA purposes https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#an-example-of-a-pod-that-uses-pod-affinity
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels: 
+                app: litecoin
+            namespaces:
+            - default
+            topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: litecoin
+        image: repo/litecoin:stable
+        # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 250m
+          limits:
+            memory: 128Mi
+            cpu: 500m
+        ports:
+        # https://litecoin.info/index.php/Litecoin.conf
+        - containerPort: 9333
+          name: web
+        - containerPort: 9332
+          name: rpc
+        # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-tcp-liveness-probe
+        readinessProbe:
+          tcpSocket:
+            port: 9333
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 9333
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        volumeMounts:
+        # default datadir $HOME/.litecoin/
+        - name: data
+          mountPath: /home/litecoin/.litecoin
+      volumes: 
+        - name: data
+          emptyDir: {}
